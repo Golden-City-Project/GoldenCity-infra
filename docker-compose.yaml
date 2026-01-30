@@ -1,0 +1,80 @@
+# 최신버전부터는 버전 안씀
+#version: '3.8'
+
+services:
+  vault:
+    image: hashicorp/vault:1.15
+    container_name: gc-vault
+    ports:
+      - "8200:8200"
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_TOKEN}
+      VAULT_ADDR: "http://0.0.0.0:8200"
+    command: server -dev -dev-root-token-id=${VAULT_TOKEN}
+    cap_add:
+        - IPC_LOCK
+
+  redis-master:
+    # 7.2.4 버전까지가 라이선스 바뀌기전 제한없는 버전
+    image: redis:7.2.4-alpine
+    container_name: gc-redis-master
+    ports:
+      - "6379:6379"
+    # 비번은 .env에
+    command: redis-server --requirepass ${REDIS_PASSWORD} --masterauth ${REDIS_PASSWORD} --replica-announce-ip host.docker.internal --replica-announce-port 6379 --appendonly yes
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    # 레플리카랑 통신하는 포트 알려주는
+    # redis-server --replica-announce-ip host.docker.internal --replica-announce-port 6379 --appendonly yes
+
+  redis-replica:
+    image: redis:7.2.4-alpine
+    container_name: gc-redis-replica
+    ports:
+      - "6380:6379"
+
+    command: redis-server --replicaof redis-master 6379 --replica-announce-ip host.docker.internal --replica-announce-port 6380 --appendonly yes
+    depends_on:
+      - redis-master
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+
+
+  # conf 파일 3개를 각각 연결해서 센티넬 3개 띄우기
+  sentinel1:
+    image: redis:7.2.4-alpine
+    container_name: gc-sentinel-1
+    ports:
+      - "26379:26379"
+    volumes:
+      - ./redis-config/sentinel_26379.conf:/etc/redis/sentinel.conf
+    command: redis-sentinel /etc/redis/sentinel.conf
+    depends_on:
+      - redis-master
+      - redis-replica
+
+  sentinel2:
+    image: redis:7.2.4-alpine
+    container_name: gc-sentinel-2
+    ports:
+      - "26380:26379"
+    volumes:
+      - ./redis-config/sentinel_26380.conf:/etc/redis/sentinel.conf
+    command: redis-sentinel /etc/redis/sentinel.conf
+    depends_on:
+      - redis-master
+      - redis-replica
+
+  sentinel3:
+    image: redis:7.2.4-alpine
+    container_name: gc-sentinel-3
+    ports:
+      - "26381:26379"
+    volumes:
+      - ./redis-config/sentinel_26381.conf:/etc/redis/sentinel.conf
+    command: redis-sentinel /etc/redis/sentinel.conf
+    depends_on:
+      - redis-master
+      - redis-replica

@@ -2,12 +2,15 @@ services:
   vault:
     image: hashicorp/vault:1.15
     container_name: gc-vault
+    user: root
     ports:
       - "8200:8200"
     environment:
-      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_TOKEN}
       VAULT_ADDR: "http://0.0.0.0:8200"
-    command: server -dev -dev-root-token-id=${VAULT_TOKEN}
+    volumes:
+      - ./vault-data:/vault/data
+      - ./vault-config.hcl:/vault/config/vault.hcl
+    command: server
     cap_add:
       - IPC_LOCK
     networks:
@@ -102,3 +105,4 @@ volumes:
   sentinel1-data:
   sentinel2-data:
   sentinel3-data:
+  vault-data:

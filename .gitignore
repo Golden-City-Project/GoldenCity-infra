@@ -1,2 +1,4 @@
 .env
 vault-init.bat
+vault-keys.txt
+vault-unseal.bat

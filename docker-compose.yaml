@@ -1,6 +1,3 @@
-# 최신버전부터는 버전 안씀
-#version: '3.8'
-
 services:
   vault:
     image: hashicorp/vault:1.15
@@ -12,37 +9,44 @@ services:
       VAULT_ADDR: "http://0.0.0.0:8200"
     command: server -dev -dev-root-token-id=${VAULT_TOKEN}
     cap_add:
-        - IPC_LOCK
+      - IPC_LOCK
+    networks:
+      - goldencity-network
 
   redis-master:
-    # 7.2.4 버전까지가 라이선스 바뀌기전 제한없는 버전
     image: redis:7.2.4-alpine
     container_name: gc-redis-master
     ports:
       - "6379:6379"
-    # 비번은 .env에
-    command: redis-server --requirepass ${REDIS_PASSWORD} --masterauth ${REDIS_PASSWORD} --replica-announce-ip host.docker.internal --replica-announce-port 6379 --appendonly yes
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-
-    # 레플리카랑 통신하는 포트 알려주는
-    # redis-server --replica-announce-ip host.docker.internal --replica-announce-port 6379 --appendonly yes
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --masterauth ${REDIS_PASSWORD}
+      --appendonly yes
+    networks:
+      - goldencity-network
+    volumes:
+      - redis-master-data:/data
 
   redis-replica:
     image: redis:7.2.4-alpine
     container_name: gc-redis-replica
     ports:
-      - "6380:6379"
-
-    command: redis-server --replicaof redis-master 6379 --replica-announce-ip host.docker.internal --replica-announce-port 6380 --appendonly yes
+      - "6380:6380"
+    command: >
+      redis-server
+      --port 6380
+      --replicaof redis-master 6379
+      --requirepass ${REDIS_PASSWORD}
+      --masterauth ${REDIS_PASSWORD}
+      --appendonly yes
     depends_on:
       - redis-master
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    networks:
+      - goldencity-network
+    volumes:
+      - redis-replica-data:/data
 
-
-
-  # conf 파일 3개를 각각 연결해서 센티넬 3개 띄우기
   sentinel1:
     image: redis:7.2.4-alpine
     container_name: gc-sentinel-1
@@ -50,10 +54,13 @@ services:
       - "26379:26379"
     volumes:
       - ./redis-config/sentinel_26379.conf:/etc/redis/sentinel.conf
+      - sentinel1-data:/data
     command: redis-sentinel /etc/redis/sentinel.conf
     depends_on:
       - redis-master
       - redis-replica
+    networks:
+      - goldencity-network
 
   sentinel2:
     image: redis:7.2.4-alpine
@@ -62,10 +69,13 @@ services:
       - "26380:26379"
     volumes:
       - ./redis-config/sentinel_26380.conf:/etc/redis/sentinel.conf
+      - sentinel2-data:/data
     command: redis-sentinel /etc/redis/sentinel.conf
     depends_on:
       - redis-master
       - redis-replica
+    networks:
+      - goldencity-network
 
   sentinel3:
     image: redis:7.2.4-alpine
@@ -74,7 +84,21 @@ services:
       - "26381:26379"
     volumes:
       - ./redis-config/sentinel_26381.conf:/etc/redis/sentinel.conf
+      - sentinel3-data:/data
     command: redis-sentinel /etc/redis/sentinel.conf
     depends_on:
       - redis-master
       - redis-replica
+    networks:
+      - goldencity-network
+
+networks:
+  goldencity-network:
+    driver: bridge
+
+volumes:
+  redis-master-data:
+  redis-replica-data:
+  sentinel1-data:
+  sentinel2-data:
+  sentinel3-data:
